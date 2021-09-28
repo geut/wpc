@@ -51,5 +51,8 @@
   "bugs": {
     "url": "https://github.com/geut/wpc/issues"
   },
-  "homepage": "https://github.com/geut/wpc#readme"
+  "homepage": "https://github.com/geut/wpc#readme",
+  "publishConfig": {
+    "access": "public"
+  }
 }
