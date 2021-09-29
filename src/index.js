@@ -28,13 +28,13 @@ export const transfer = (data, transferable) => {
 }
 
 export class WPC {
-  constructor (port) {
+  constructor (port, onmessage) {
     this._port = port
     this._requests = new Map()
     this._actions = new Map()
     this._uuid = new UUID(() => this._requests.size)
     this._port.onmessage = async ev => {
-      if (ev.data?.requestId === undefined) return
+      if (ev.data?.requestId === undefined) return onmessage && onmessage(ev)
 
       if (!ev.data.action) {
         return this._handleResponse(ev.data)
