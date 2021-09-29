@@ -1,6 +1,6 @@
 {
   "name": "@geut/wpc",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Simple RPC solution for Workers, SharedWorkers and ServiceWorkers.",
   "type": "module",
   "exports": {
