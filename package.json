@@ -16,7 +16,9 @@
     "lint": "standard",
     "prepublishOnly": "npm test"
   },
-  "dependencies": {},
+  "dependencies": {
+    "fastq": "^1.13.0"
+  },
   "devDependencies": {
     "standard": "^16.0.3",
     "uvu": "^0.5.1",

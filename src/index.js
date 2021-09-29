@@ -1,3 +1,5 @@
+import { promise as fastq } from 'fastq'
+
 const isTransfer = Symbol('is-transfer')
 
 class UUID {
@@ -28,13 +30,23 @@ export const transfer = (data, transferable) => {
 }
 
 export class WPC {
-  constructor (port, onmessage) {
+  constructor (port, opts = {}) {
+    const { onMessage, concurrency, timeout } = opts
+
     this._port = port
+
+    if (concurrency) {
+      this._queue = fastq((req) => {
+        return this._call(req)
+      }, concurrency)
+    }
+
+    this._timeout = timeout
     this._requests = new Map()
     this._actions = new Map()
     this._uuid = new UUID(() => this._requests.size)
     this._port.onmessage = async ev => {
-      if (ev.data?.requestId === undefined) return onmessage && onmessage(ev)
+      if (ev.data?.requestId === undefined) return onMessage && onMessage(ev)
 
       if (!ev.data.action) {
         return this._handleResponse(ev.data)
@@ -68,7 +80,15 @@ export class WPC {
     }
   }
 
-  async call (action, data, timeout) {
+  async call (action, data, timeout = this._timeout) {
+    if (this._closed) return
+
+    const req = { action, data, timeout }
+    if (this._queue) return this._queue.push(req)
+    return this._call(req)
+  }
+
+  async _call ({ action, data, timeout }) {
     if (this._closed) return
 
     const requestId = this._uuid.get()
@@ -79,7 +99,7 @@ export class WPC {
       let done = false
       if (timeout) {
         timer = setTimeout(() => {
-          request.reject(new Error('WPC timeout'))
+          request.reject(new Error('[WPC] request timeout'))
         }, timeout)
       }
 
@@ -118,6 +138,9 @@ export class WPC {
   }
 
   close () {
+    if (this._closed) return
+
+    this._closed = true
     this._port.onmessage = null
 
     if (this._port.close) {
@@ -126,7 +149,13 @@ export class WPC {
       this._port.terminate()
     }
 
-    this._closed = true
+    if (this._queue) this._queue.kill()
+
+    this._requests.forEach(request => {
+      request.reject(new Error('[WPC] request canceled'))
+    })
+
+    this._requests.clear()
   }
 
   _handleResponse (response) {
