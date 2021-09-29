@@ -56,7 +56,7 @@ export class WPC {
       let result
       let error
       try {
-        result = await this._actions.get(action)(data)
+        result = await this._actions.get(action)(data, ev)
       } catch (err) {
         error = err
       }
