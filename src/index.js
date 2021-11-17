@@ -31,7 +31,7 @@ export const transfer = (data, transferable) => {
 
 export class WPC {
   constructor (port, opts = {}) {
-    const { onMessage, concurrency, timeout } = opts
+    const { onMessage, concurrency, timeout = 10_000 } = opts
 
     this._port = port
 
@@ -80,15 +80,15 @@ export class WPC {
     }
   }
 
-  async call (action, data, timeout = this._timeout) {
+  async call (action, data, { timeout = this._timeout, signal } = {}) {
     if (this._closed) return
 
-    const req = { action, data, timeout }
+    const req = { action, data, timeout, signal }
     if (this._queue) return this._queue.push(req)
     return this._call(req)
   }
 
-  async _call ({ action, data, timeout }) {
+  async _call ({ action, data, timeout, signal }) {
     if (this._closed) return
 
     const requestId = this._uuid.get()
@@ -121,6 +121,10 @@ export class WPC {
     })
 
     this._requests.set(requestId, request)
+
+    signal && signal.addEventListener('abort', () => {
+      request.reject(new Error('request aborted'))
+    }, { once: true })
 
     if (data?.[isTransfer]) {
       this._port.postMessage({ requestId, action, data: data.data }, data.transferable)
