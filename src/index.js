@@ -31,7 +31,7 @@ export const transfer = (data, transferable) => {
 
 export class WPC {
   constructor (port, opts = {}) {
-    const { onMessage, concurrency, timeout = 10_000 } = opts
+    const { onMessage, concurrency, timeout } = opts
 
     this._port = port
 
