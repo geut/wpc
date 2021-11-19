@@ -238,7 +238,11 @@ export class WPC {
     const { requestId, action, data } = ev.data
     if (this._events.has(action)) {
       for (const handler of this._events.get(action)) {
-        await handler(data, ev)
+        try {
+          await handler(data, ev)
+        } catch (err) {
+          console.error(err.message)
+        }
       }
     }
     this._port.postMessage({ requestId })
