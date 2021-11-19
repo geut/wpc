@@ -10,6 +10,7 @@ test('basic', async () => {
   const event = rpc.once('pong-event')
   assert.is(await rpc.call('ping'), 'pong')
   assert.equal(await event, { isEvent: true })
+  console.log(rpc._events)
   rpc.close()
 })
 
