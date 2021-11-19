@@ -44,9 +44,14 @@ export class WPC {
     this._timeout = timeout
     this._requests = new Map()
     this._actions = new Map()
+    this._events = new Map()
     this._uuid = new UUID(() => this._requests.size)
     this._port.onmessage = async ev => {
       if (ev.data?.requestId === undefined) return onMessage && onMessage(ev)
+
+      if (ev.data.isEvent) {
+        return this._handleIncomingEvent(ev)
+      }
 
       if (!ev.data.action) {
         return this._handleResponse(ev.data)
@@ -88,51 +93,57 @@ export class WPC {
     return this._call(req)
   }
 
-  async _call ({ action, data, timeout, signal }) {
-    if (this._closed) return
+  on (eventName, handler) {
+    let handlers = this._events.get(eventName)
+    if (!handlers) {
+      handlers = new Set()
+      this._events.set(eventName, handlers)
+    }
 
-    const requestId = this._uuid.get()
+    handlers.add(handler)
+    return () => this.off(eventName, handler)
+  }
 
-    const request = {}
-    request.promise = new Promise((resolve, reject) => {
+  off (eventName, handler) {
+    const handlers = this._events.get(eventName)
+    if (!handlers) return
+    handlers.delete(handler)
+  }
+
+  once (eventName, { timeout, signal } = {}) {
+    return new Promise((resolve, reject) => {
       let timer
-      let done = false
+      const onEvent = (args) => {
+        this.off(eventName, onEvent)
+        if (timer) clearTimeout(timer)
+        resolve(args)
+      }
+
       if (timeout) {
         timer = setTimeout(() => {
-          request.reject(new Error('[WPC] request timeout'))
+          this.off(eventName, onEvent)
+          reject(new Error(`[WPC] event ${eventName} timeout`))
         }, timeout)
       }
 
-      request.resolve = (data) => {
-        if (done) return
-        this._uuid.release(requestId)
-        done = true
-        timer && clearTimeout(timer)
-        resolve(data)
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          this.off(eventName, onEvent)
+          if (timer) clearTimeout(timer)
+          reject(new Error(`[WPC] event ${eventName} aborted`))
+        }, { once: true })
       }
 
-      request.reject = err => {
-        if (done) return
-        this._uuid.release(requestId)
-        done = true
-        timer && clearTimeout(timer)
-        reject(err)
-      }
+      this.on(eventName, onEvent)
     })
+  }
 
-    this._requests.set(requestId, request)
+  emit (eventName, data, { timeout = this._timeout, signal } = {}) {
+    if (this._closed) return
 
-    signal && signal.addEventListener('abort', () => {
-      request.reject(new Error('request aborted'))
-    }, { once: true })
-
-    if (data?.[isTransfer]) {
-      this._port.postMessage({ requestId, action, data: data.data }, data.transferable)
-    } else {
-      this._port.postMessage({ requestId, action, data })
-    }
-
-    return request.promise
+    const req = { action: eventName, isEvent: true, data, timeout, signal }
+    if (this._queue) return this._queue.push(req)
+    return this._call(req)
   }
 
   actions (actions) {
@@ -162,6 +173,53 @@ export class WPC {
     this._requests.clear()
   }
 
+  async _call ({ action, isEvent, data, timeout, signal }) {
+    if (this._closed) return
+
+    const requestId = this._uuid.get()
+
+    const request = {}
+    request.promise = new Promise((resolve, reject) => {
+      let timer
+      let done = false
+      if (timeout) {
+        timer = setTimeout(() => {
+          request.reject(new Error(`[WPC] request ${action} timeout`))
+        }, timeout)
+      }
+
+      request.resolve = (data) => {
+        if (done) return
+        this._uuid.release(requestId)
+        done = true
+        timer && clearTimeout(timer)
+        resolve(data)
+      }
+
+      request.reject = err => {
+        if (done) return
+        this._uuid.release(requestId)
+        done = true
+        timer && clearTimeout(timer)
+        reject(err)
+      }
+    })
+
+    this._requests.set(requestId, request)
+
+    signal && signal.addEventListener('abort', () => {
+      request.reject(new Error(`[WPC] request ${action} aborted`))
+    }, { once: true })
+
+    if (data?.[isTransfer]) {
+      this._port.postMessage({ requestId, isEvent, action, data: data.data }, data.transferable)
+    } else {
+      this._port.postMessage({ requestId, isEvent, action, data })
+    }
+
+    return request.promise
+  }
+
   _handleResponse (response) {
     const { requestId, data, error } = response
 
@@ -174,5 +232,15 @@ export class WPC {
     }
 
     request.resolve(data)
+  }
+
+  async _handleIncomingEvent (ev) {
+    const { requestId, action, data } = ev.data
+    if (this._events.has(action)) {
+      for (const handler of this._events.get(action)) {
+        await handler(data, ev)
+      }
+    }
+    this._port.postMessage({ requestId })
   }
 }
