@@ -138,7 +138,7 @@ export class WPC {
     })
   }
 
-  emit (eventName, data, { timeout = this._timeout, signal } = {}) {
+  async emit (eventName, data, { timeout = this._timeout, signal } = {}) {
     if (this._closed) return
 
     const req = { action: eventName, isEvent: true, data, timeout, signal }
